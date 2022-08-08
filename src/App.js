@@ -561,6 +561,18 @@ QUnit.module("Expected error cases", () => {
     // await DataStore.clear();
   });
 
+  QUnit.test("cannot delte object that doesn't exist - baseline error", async assert => {
+    const saved = await DataStore.save(new BasicModel({
+      body: `${assert.test.testName} - basic model`
+    }));
+
+    const deleted = await DataStore.delete(BasicModel, makeID());
+    const retrieved = await DataStore.query(BasicModel, saved.id);
+
+    assert.deepEqual(deleted, []);
+    assert.ok(retrieved, "the item should still be there")
+  });
+
   QUnit.test("cannot save a post (HAS_MANY parent) without an ID", async assert => {
     const saveOperation = DataStore.save(new Post({
       title: assert.test.testName
