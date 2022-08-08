@@ -144,7 +144,7 @@ QUnit.module("Basic", () => {
       assert.equal(retrievedUpdated.body, `${saved.body} - edited`);
     });
 
-    QUnit.test("cannot update Post (HAS_ONE parent) SK", async assert => {
+    QUnit.test.skip("cannot update Post (HAS_ONE parent) SK", async assert => {
       const isolationId = makeID();
       const baseTitle = `${assert.test.testName} - ${isolationId}`;
 
@@ -166,7 +166,7 @@ QUnit.module("Basic", () => {
     });
 
 
-    QUnit.test("cannot update Post (HAS_ONE parent) Cluster key", async assert => {
+    QUnit.test.skip("cannot update Post (HAS_ONE parent) Cluster key", async assert => {
       const isolationId = makeID();
       const baseTitle = `${assert.test.testName} - ${isolationId}`;
 
@@ -186,15 +186,156 @@ QUnit.module("Basic", () => {
         })
       }, "You should not allowed to edit cluster keys");
     });
+
+    QUnit.test("can update post on Comment (BELONGS_TO FK)", async assert => {
+      const isolationId = makeID();
+
+      const postA = await DataStore.save(new Post({
+        postId: makeID(),
+        title: `${assert.test.testName} - ${isolationId} - post A`
+      }));
+
+      const postB = await DataStore.save(new Post({
+        postId: makeID(),
+        title: `${assert.test.testName} - ${isolationId} - post B`
+      }));
+
+      const comment = await DataStore.save(new Comment({
+        commentId: makeID(),
+        content: `${assert.test.testName} - ${isolationId} - comment`,
+        post: postA
+      }));
+
+      const retrievedComment = await DataStore.query(Comment, comment.commentId);
+
+      const updated = await DataStore.save(Comment.copyOf(retrievedComment, c => {
+        c.post = postB
+      }));
+
+      const retrievedUpdated = await DataStore.query(Comment, comment.commentId);
+
+      assert.ok(retrievedUpdated, "retrieved updated comment should exist");
+      assert.equal(retrievedUpdated.post.postId, postB.postId);
+    });
     
   });
 
   QUnit.module("Delete", () => {
+    QUnit.test("can delete BasicModel by instance", async assert => {
+      const isolationId = makeID();
+      const item = await DataStore.save(new BasicModel({
+        body: `${assert.test.testName} - ${isolationId}`
+      }));
 
+      const retrievedBeforeDelete = await DataStore.query(BasicModel, item.id);
+
+      await DataStore.delete(item);
+
+      const retrievedAfterDelete = await DataStore.query(BasicModel, item.id);
+
+      assert.ok(retrievedBeforeDelete, "a pre-delete record should be found")
+      assert.notOk(retrievedAfterDelete, "a post-delete record should NOT be found")
+    })
+
+    QUnit.test("can delete Post by instance", async assert => {
+      const isolationId = makeID();
+      const post = await DataStore.save(new Post({
+        postId: makeID(),
+        title: `${assert.test.testName} - ${isolationId} - post`
+      }))
+
+      await DataStore.delete(post);
+
+      const retrieved = await DataStore.query(Post, post.postId);
+
+      assert.notOk(retrieved, "no record should be found")
+    })
+
+    QUnit.test("can delete Post by PK", async assert => {
+      const isolationId = makeID();
+      const post = await DataStore.save(new Post({
+        postId: makeID(),
+        title: `${assert.test.testName} - ${isolationId} - post`
+      }))
+
+      await DataStore.delete(Post, {
+        postId: post.postId,
+        title: post.title
+      });
+
+      const retrieved = await DataStore.query(Post, post.postId);
+
+      assert.notOk(retrieved, "no record should be found")
+    });
+
+    QUnit.test("can delete Post by PK predicate", async assert => {
+      const isolationId = makeID();
+      const post = await DataStore.save(new Post({
+        postId: makeID(),
+        title: `${assert.test.testName} - ${isolationId} - post`
+      }))
+
+      await DataStore.delete(Post, p =>
+        p.postId("eq", post.postId).title("eq", post.title)
+      );
+
+      const retrieved = await DataStore.query(Post, post.postId);
+
+      assert.notOk(retrieved, "no record should be found")
+    });
+
+    QUnit.test("can delete Post by PK cluster key", async assert => {
+      const isolationId = makeID();
+      const post = await DataStore.save(new Post({
+        postId: makeID(),
+        title: `${assert.test.testName} - ${isolationId} - post`
+      }))
+  
+      await DataStore.delete(Post, p => p.postId("eq", post.postId));
+  
+      const retrieved = await DataStore.query(Post, post.postId);
+  
+      assert.notOk(retrieved, "no record should be found")
+    });
+  
+    QUnit.test("can delete Comment by instance", async assert => {
+      const isolationId = makeID();
+      const comment = await DataStore.save(new Comment({
+        commentId: makeID(),
+        body: `${assert.test.testName} - ${isolationId} - comment`
+      }))
+  
+      await DataStore.delete(comment);
+  
+      const retrieved = await DataStore.query(Comment, comment.commentId);
+  
+      assert.notOk(retrieved, "no record should be found")
+    });
+  
+    QUnit.test("can delete Comment by instance", async assert => {
+      const isolationId = makeID();
+      const comment = await DataStore.save(new Comment({
+        commentId: makeID(),
+        body: `${assert.test.testName} - ${isolationId} - comment`
+      }))
+  
+      await DataStore.delete(Comment, {
+        commentId: comment.commentId,
+        body: comment.body
+      });
+  
+      const retrieved = await DataStore.query(Comment, comment.commentId);
+  
+      assert.notOk(retrieved, "no record should be found")
+    });
   });
-
-
 });
+
+// QUnit.module("observe", () => {
+//   QUnit.test("sanity check - can observe changes to BasicModel", async assert => {
+//     s
+//   });
+// });
 
 QUnit.module("Related entity stuff", () => {
   QUnit.test("can create a comment on a post", async assert => {
