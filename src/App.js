@@ -10,6 +10,30 @@ Amplify.configure(awsconfig);
 
 const makeID = () => crypto.randomUUID();
 
+const waitForObserve = ({
+  model,
+  predicate = undefined,
+  count = 1,
+  timeout = 5000
+}) => new Promise((resolve, reject) => {
+  let timer;
+  const events = [];
+
+  const subscription = DataStore.observe(model, predicate).subscribe(event => {
+    events.push(event);
+    if (events.length === count) {
+      subscription.unsubscribe();
+      clearTimeout(timer);
+      resolve(events);
+    }
+  });
+
+  timer = setTimeout(() => {
+    subscription.unsubscribe();
+    reject("observe() timed out");
+  }, timeout);
+});
+
 QUnit.start();
 
 QUnit.module("Sanity checks", () => {
@@ -289,7 +313,7 @@ QUnit.module("Basic", () => {
       const post = await DataStore.save(new Post({
         postId: makeID(),
         title: `${assert.test.testName} - ${isolationId} - post`
-      }))
+      }));
   
       await DataStore.delete(Post, p => p.postId("eq", post.postId));
   
@@ -302,8 +326,8 @@ QUnit.module("Basic", () => {
       const isolationId = makeID();
       const comment = await DataStore.save(new Comment({
         commentId: makeID(),
-        body: `${assert.test.testName} - ${isolationId} - comment`
-      }))
+        content: `${assert.test.testName} - ${isolationId} - comment`
+      }));
   
       await DataStore.delete(comment);
   
@@ -312,17 +336,33 @@ QUnit.module("Basic", () => {
       assert.notOk(retrieved, "no record should be found")
     });
   
-    QUnit.test("can delete Comment by instance", async assert => {
+    QUnit.test("can delete Comment by PK cluster key", async assert => {
       const isolationId = makeID();
       const comment = await DataStore.save(new Comment({
         commentId: makeID(),
-        body: `${assert.test.testName} - ${isolationId} - comment`
-      }))
+        content: `${assert.test.testName} - ${isolationId} - comment`
+      }));
   
       await DataStore.delete(Comment, {
         commentId: comment.commentId,
-        body: comment.body
+        content: comment.content
       });
+  
+      const retrieved = await DataStore.query(Comment, comment.commentId);
+  
+      assert.notOk(retrieved, "no record should be found")
+    });
+
+    QUnit.test("can delete Comment by PK predicate", async assert => {
+      const isolationId = makeID();
+      const comment = await DataStore.save(new Comment({
+        commentId: makeID(),
+        content: `${assert.test.testName} - ${isolationId} - comment`
+      }))
+  
+      await DataStore.delete(Comment,
+        c => c.commentId('eq', comment.commentId).content('eq', comment.content)
+      );
   
       const retrieved = await DataStore.query(Comment, comment.commentId);
   
@@ -331,11 +371,126 @@ QUnit.module("Basic", () => {
   });
 });
 
-// QUnit.module("observe", () => {
-//   QUnit.test("sanity check - can observe changes to BasicModel", async assert => {
-//     s
-//   });
-// });
+QUnit.module("observe", () => {
+  QUnit.module("sanity checks", () => {
+    QUnit.test("can observe INSERT on ALL changes to BasicModel", async assert => {
+      const isolationId = makeID();
+
+      const pendingUpdates = waitForObserve({model: BasicModel});
+      await DataStore.save(new BasicModel({
+        body: `${assert.test.testName} - ${isolationId}`
+      }))
+      const updates = await pendingUpdates;
+
+      assert.equal(updates.length, 1);
+      assert.equal(updates[0].opType, 'INSERT');
+      assert.equal(updates[0].element.body, `${assert.test.testName} - ${isolationId}`);
+    });
+
+    QUnit.test("can observe UPDATE on ALL changes to BasicModel", async assert => {
+      const isolationId = makeID();
+
+      const saved = await DataStore.save(new BasicModel({
+        body: `${assert.test.testName} - ${isolationId}`
+      }))
+
+      const pendingUpdates = waitForObserve({model: BasicModel});
+      await DataStore.save(BasicModel.copyOf(saved, updated => {
+        updated.body = `${assert.test.testName} - ${isolationId} - edited`
+      }));
+      const updates = await pendingUpdates;
+
+      assert.equal(updates.length, 1);
+      assert.equal(updates[0].opType, 'UPDATE');
+      assert.equal(updates[0].element.body, `${assert.test.testName} - ${isolationId} - edited`);
+    });
+
+    QUnit.test("can observe DELETE on ALL changes to BasicModel", async assert => {
+      const isolationId = makeID();
+
+      const saved = await DataStore.save(new BasicModel({
+        body: `${assert.test.testName} - ${isolationId}`
+      }))
+
+      const pendingUpdates = waitForObserve({model: BasicModel});
+      await DataStore.delete(saved);
+      const updates = await pendingUpdates;
+
+      assert.equal(updates.length, 1);
+      assert.equal(updates[0].opType, 'DELETE');
+      assert.equal(updates[0].element.body, `${assert.test.testName} - ${isolationId}`);
+    });
+  });
+
+  QUnit.module("CPK models", () => {
+    QUnit.test("can observe INSERT on ALL changes to Post", async assert => {
+      const isolationId = makeID();
+
+      const pendingUpdates = waitForObserve({model: Post});
+      await DataStore.save(new Post({
+        postId: makeID(),
+        title: `${assert.test.testName} - ${isolationId}`
+      }))
+      const updates = await pendingUpdates;
+
+      assert.equal(updates.length, 1);
+      assert.equal(updates[0].opType, 'INSERT');
+      assert.equal(updates[0].element.title, `${assert.test.testName} - ${isolationId}`);
+    });
+
+    /**
+     * No test for editing Post because we don't have editable fields on Post.
+     */
+
+     QUnit.test.skip("can observe UPDATE on ALL changes to Comment", async assert => {
+      const isolationId = makeID();
+
+      const postA = await DataStore.save(new Post({
+        postId: makeID(),
+        title: `${assert.test.testName} - ${isolationId} - post A`
+      }));
+
+      const postB = await DataStore.save(new Post({
+        postId: makeID(),
+        title: `${assert.test.testName} - ${isolationId} - post B`
+      }));
+
+      const comment = await DataStore.save(new Comment({
+        commentId: makeID(),
+        content: `${assert.test.testName} - ${isolationId} - comment`,
+        post: postA
+      }));
+
+      const pendingUpdates = waitForObserve({model: BasicModel});
+      await DataStore.save(Comment.copyOf(comment, updated => {
+        updated.post = postB
+      }));
+      const updates = await pendingUpdates;
+
+      assert.equal(updates.length, 1);
+      assert.equal(updates[0].opType, 'UPDATE');
+      assert.equal(updates[0].element.content, `${assert.test.testName} - ${isolationId} - comment`);
+      assert.equal(updates[0].element.post.postId, postB.postId);
+    });
+
+    QUnit.test.skip("can observe DELETE on ALL changes to Post", async assert => {
+      const isolationId = makeID();
+
+      const saved = await DataStore.save(new Post({
+        postId: makeID(),
+        title: `${assert.test.testName} - ${isolationId}`
+      }))
+
+      const pendingUpdates = waitForObserve({model: Post});
+      await DataStore.delete(saved);
+      const updates = await pendingUpdates;
+
+      assert.equal(updates.length, 1);
+      assert.equal(updates[0].opType, 'DELETE');
+      assert.equal(updates[0].element.title, `${assert.test.testName} - ${isolationId}`);
+    });
+  })
+});
 
 QUnit.module("Related entity stuff", () => {
   QUnit.test("can create a comment on a post", async assert => {
