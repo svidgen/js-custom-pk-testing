@@ -34,6 +34,24 @@ const waitForObserve = ({
   }, timeout);
 });
 
+const waitForSnapshots = ({
+  model,
+  predicate = undefined,
+  time = 3000
+}) => new Promise(resolve => {
+  let timer;
+  const snapshots = [];
+
+  const subscription = DataStore.observeQuery(model, predicate).subscribe(({items}) => {
+    snapshots.push(items);
+  });
+
+  timer = setTimeout(() => {
+    subscription.unsubscribe();
+    resolve(snapshots);
+  }, time);
+});
+
 QUnit.start();
 
 QUnit.module("Sanity checks", () => {
@@ -423,6 +441,7 @@ QUnit.module("observe", () => {
   });
 
   QUnit.module("CPK models", () => {
+
     QUnit.test("can observe INSERT on ALL changes to Post", async assert => {
       const isolationId = makeID();
 
@@ -438,11 +457,29 @@ QUnit.module("observe", () => {
       assert.equal(updates[0].element.title, `${assert.test.testName} - ${isolationId}`);
     });
 
+    QUnit.test("can observe INSERT on changes to Post by predicate", async assert => {
+      const isolationId = makeID();
+
+      const pendingUpdates = waitForObserve({
+        model: Post,
+        predicate: p => p.title("eq", `${assert.test.testName} - ${isolationId}`)
+      });
+      await DataStore.save(new Post({
+        postId: makeID(),
+        title: `${assert.test.testName} - ${isolationId}`
+      }))
+      const updates = await pendingUpdates;
+
+      assert.equal(updates.length, 1);
+      assert.equal(updates[0].opType, 'INSERT');
+      assert.equal(updates[0].element.title, `${assert.test.testName} - ${isolationId}`);
+    });
+
     /**
      * No test for editing Post because we don't have editable fields on Post.
      */
 
-     QUnit.test.skip("can observe UPDATE on ALL changes to Comment", async assert => {
+     QUnit.test("can observe UPDATE on ALL changes to Comment", async assert => {
       const isolationId = makeID();
 
       const postA = await DataStore.save(new Post({
@@ -461,10 +498,13 @@ QUnit.module("observe", () => {
         post: postA
       }));
 
-      const pendingUpdates = waitForObserve({model: BasicModel});
-      await DataStore.save(Comment.copyOf(comment, updated => {
-        updated.post = postB
+      const pendingUpdates = waitForObserve({model: Comment});
+      const updated = await DataStore.save(Comment.copyOf(comment, draft => {
+        draft.post = postB
       }));
+      assert.ok(updated);
+      assert.equal(updated.commentId, comment.commentId);
+
       const updates = await pendingUpdates;
 
       assert.equal(updates.length, 1);
@@ -473,7 +513,127 @@ QUnit.module("observe", () => {
       assert.equal(updates[0].element.post.postId, postB.postId);
     });
 
-    QUnit.test.skip("can observe DELETE on ALL changes to Post", async assert => {
+    QUnit.test("can observe UPDATE on changes to Comment by predicate", async assert => {
+      const isolationId = makeID();
+
+      const postA = await DataStore.save(new Post({
+        postId: makeID(),
+        title: `${assert.test.testName} - ${isolationId} - post A`
+      }));
+
+      const postB = await DataStore.save(new Post({
+        postId: makeID(),
+        title: `${assert.test.testName} - ${isolationId} - post B`
+      }));
+
+      const comment = await DataStore.save(new Comment({
+        commentId: makeID(),
+        content: `${assert.test.testName} - ${isolationId} - comment`,
+        post: postA
+      }));
+
+      const pendingUpdates = waitForObserve({
+        model: Comment,
+        predicate: c => c.content('eq', `${assert.test.testName} - ${isolationId} - comment`)
+      });
+      const updated = await DataStore.save(Comment.copyOf(comment, draft => {
+        draft.post = postB
+      }));
+      assert.ok(updated);
+      assert.equal(updated.commentId, comment.commentId);
+
+      const updates = await pendingUpdates;
+
+      assert.equal(updates.length, 1);
+      assert.equal(updates[0].opType, 'UPDATE');
+      assert.equal(updates[0].element.content, `${assert.test.testName} - ${isolationId} - comment`);
+      assert.equal(updates[0].element.post.postId, postB.postId);
+    });
+
+    QUnit.test("can observe UPDATE on changes to Comment by PK predicate", async assert => {
+      const isolationId = makeID();
+
+      const postA = await DataStore.save(new Post({
+        postId: makeID(),
+        title: `${assert.test.testName} - ${isolationId} - post A`
+      }));
+
+      const postB = await DataStore.save(new Post({
+        postId: makeID(),
+        title: `${assert.test.testName} - ${isolationId} - post B`
+      }));
+
+      const comment = await DataStore.save(new Comment({
+        commentId: makeID(),
+        content: `${assert.test.testName} - ${isolationId} - comment`,
+        post: postA
+      }));
+
+      const pendingUpdates = waitForObserve({
+        model: Comment,
+        predicate: c => c
+          .commentId('eq', comment.commentId)
+          .content('eq', comment.content)
+      });
+      const updated = await DataStore.save(Comment.copyOf(comment, draft => {
+        draft.post = postB
+      }));
+      assert.ok(updated);
+      assert.equal(updated.commentId, comment.commentId);
+
+      const updates = await pendingUpdates;
+
+      assert.equal(updates.length, 1);
+      assert.equal(updates[0].opType, 'UPDATE');
+      assert.equal(updates[0].element.content, `${assert.test.testName} - ${isolationId} - comment`);
+      assert.equal(updates[0].element.post.postId, postB.postId);
+    });
+
+    /**
+     * Not supported. When we get a better error than "TypeError: existing is not
+     * a function", let's add a check here for the better error.
+     */
+    QUnit.test.skip("can observe UPDATE on changes to Comment by PK object", async assert => {
+      const isolationId = makeID();
+
+      const postA = await DataStore.save(new Post({
+        postId: makeID(),
+        title: `${assert.test.testName} - ${isolationId} - post A`
+      }));
+
+      const postB = await DataStore.save(new Post({
+        postId: makeID(),
+        title: `${assert.test.testName} - ${isolationId} - post B`
+      }));
+
+      const comment = await DataStore.save(new Comment({
+        commentId: makeID(),
+        content: `${assert.test.testName} - ${isolationId} - comment`,
+        post: postA
+      }));
+
+      const pendingUpdates = waitForObserve({
+        model: Comment,
+        predicate: {
+          commentId: comment.commentId,
+          content: comment.content
+        }
+      });
+      const updated = await DataStore.save(Comment.copyOf(comment, draft => {
+        draft.post = postB
+      }));
+      assert.ok(updated);
+      assert.equal(updated.commentId, comment.commentId);
+
+      const updates = await pendingUpdates;
+
+      assert.equal(updates.length, 1);
+      assert.equal(updates[0].opType, 'UPDATE');
+      assert.equal(updates[0].element.content, `${assert.test.testName} - ${isolationId} - comment`);
+      assert.equal(updates[0].element.post.postId, postB.postId);
+    });
+
+    QUnit.test("can observe DELETE on ALL changes to Post", async assert => {
       const isolationId = makeID();
 
       const saved = await DataStore.save(new Post({
@@ -488,6 +648,109 @@ QUnit.module("observe", () => {
       assert.equal(updates.length, 1);
       assert.equal(updates[0].opType, 'DELETE');
       assert.equal(updates[0].element.title, `${assert.test.testName} - ${isolationId}`);
+    });
+
+    QUnit.test("can observe DELETE on changes to Post by predicate", async assert => {
+      const isolationId = makeID();
+
+      const saved = await DataStore.save(new Post({
+        postId: makeID(),
+        title: `${assert.test.testName} - ${isolationId}`
+      }))
+
+      const pendingUpdates = waitForObserve({
+        model: Post,
+        predicate: p => p.postId('eq', saved.postId)
+      });
+      await DataStore.delete(saved);
+      const updates = await pendingUpdates;
+
+      assert.equal(updates.length, 1);
+      assert.equal(updates[0].opType, 'DELETE');
+      assert.equal(updates[0].element.title, `${assert.test.testName} - ${isolationId}`);
+    });
+  })
+});
+
+QUnit.module("observeQuery", () => {
+  QUnit.module("sanity checks", () => {
+    QUnit.test("can get snapshot containing basic model", async assert => {
+      const isolationId = makeID();
+      const pendingSnapshots = waitForSnapshots({ model: BasicModel });
+
+      const saved = await DataStore.save(new BasicModel({
+        body: `${assert.test.testName} - ${isolationId}`
+      }));
+
+      const snapshots = await pendingSnapshots;
+      assert.ok(snapshots.length >= 1);
+
+      const lastSnapshot = snapshots.pop();
+      assert.ok(lastSnapshot.length >= 1);
+      assert.ok(lastSnapshot.some(m => m.id === saved.id));
+    });
+  });
+
+  QUnit.module("CPK models", () => {
+    QUnit.test("can get snapshot containing Post (HAS MANY parent) with ALL", async assert => {
+      const isolationId = makeID();
+      const pendingSnapshots = waitForSnapshots({ model: Post });
+
+      const saved = await DataStore.save(new Post({
+        postId: makeID(),
+        title: `${assert.test.testName} - ${isolationId} - post`
+      }));
+
+      const snapshots = await pendingSnapshots;
+      assert.ok(snapshots.length >= 1);
+
+      const lastSnapshot = snapshots.pop();
+      assert.ok(lastSnapshot.length >= 1);
+      assert.ok(lastSnapshot.some(post => post.postId === saved.postId));
+    });
+
+    QUnit.test("can get snapshot containing Post (HAS MANY parent) with title predicate", async assert => {
+      const isolationId = makeID();
+
+      const title = `${assert.test.testName} - ${isolationId} - post`;
+      const pendingSnapshots = waitForSnapshots({
+        model: Post,
+        predicate: p => p.title('eq', title)
+      });
+
+      const saved = await DataStore.save(new Post({
+        postId: makeID(),
+        title
+      }));
+
+      const snapshots = await pendingSnapshots;
+      assert.ok(snapshots.length >= 1);
+
+      const lastSnapshot = snapshots.pop();
+      assert.ok(lastSnapshot.length >= 1);
+      assert.ok(lastSnapshot.some(post => post.postId === saved.postId));
+    });
+
+    QUnit.test("can get snapshot containing Post (HAS MANY parent) with postId predicate", async assert => {
+      const isolationId = makeID();
+
+      const postId = makeID();
+      const pendingSnapshots = waitForSnapshots({
+        model: Post,
+        predicate: p => p.postId('eq', postId)
+      });
+
+      const saved = await DataStore.save(new Post({
+        postId,
+        title: `${assert.test.testName} - ${isolationId} - post`
+      }));
+
+      const snapshots = await pendingSnapshots;
+      assert.ok(snapshots.length >= 1);
+
+      const lastSnapshot = snapshots.pop();
+      assert.ok(lastSnapshot.length >= 1);
+      assert.ok(lastSnapshot.some(post => post.postId === saved.postId));
     });
   })
 });
@@ -561,7 +824,7 @@ QUnit.module("Expected error cases", () => {
     // await DataStore.clear();
   });
 
-  QUnit.test("cannot delte object that doesn't exist - baseline error", async assert => {
+  QUnit.test("cannot delete object that doesn't exist - baseline error", async assert => {
     const saved = await DataStore.save(new BasicModel({
       body: `${assert.test.testName} - basic model`
     }));
