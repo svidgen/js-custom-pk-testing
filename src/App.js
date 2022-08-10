@@ -595,7 +595,16 @@ const waitForSnapshots = ({
   
     QUnit.module("CPK models", () => {
   
+      
       QUnit.test("can observe INSERT on ALL changes to Post", async assert => {
+
+        /**
+         * Due to execution order, this test fails when run alongside the rest
+         * of the test suite without some padding ...
+         */
+
+        await new Promise(unsleep => setTimeout(unsleep, 2000));
+
         const isolationId = makeID();
   
         const pendingUpdates = waitForObserve({model: Post});
