@@ -112,7 +112,7 @@ const waitForSnapshots = ({
           title: assert.test.testName
         }));
     
-        const retrieved = await DataStore.query(Post, saved.postId);
+        const retrieved = await DataStore.query(Post, {...saved});
     
         assert.equal(retrieved.postId, saved.postId);
         assert.equal(retrieved.title, saved.title);
@@ -136,7 +136,7 @@ const waitForSnapshots = ({
           content: assert.test.testName,
         }));
     
-        const retrieved = await DataStore.query(Comment, saved.commentId);
+        const retrieved = await DataStore.query(Comment, {...saved});
         assert.equal(retrieved.commentId, saved.commentId);
         assert.equal(retrieved.content, saved.content);
       });
@@ -254,13 +254,13 @@ const waitForSnapshots = ({
           post: postA
         }));
   
-        const retrievedComment = await DataStore.query(Comment, comment.commentId);
+        const retrievedComment = await DataStore.query(Comment, comment);
   
         const updated = await DataStore.save(Comment.copyOf(retrievedComment, c => {
           c.post = postB
         }));
   
-        const retrievedUpdated = await DataStore.query(Comment, comment.commentId);
+        const retrievedUpdated = await DataStore.query(Comment, comment);
   
         assert.ok(retrievedUpdated, "retrieved updated comment should exist");
         assert.equal(retrievedUpdated.post.postId, postB.postId);
@@ -331,7 +331,7 @@ const waitForSnapshots = ({
   
         await DataStore.delete(post);
   
-        const retrieved = await DataStore.query(Post, post.postId);
+        const retrieved = await DataStore.query(Post, post);
   
         assert.notOk(retrieved, "no record should be found")
       });
@@ -348,7 +348,7 @@ const waitForSnapshots = ({
           title: post.title
         });
   
-        const retrieved = await DataStore.query(Post, post.postId);
+        const retrieved = await DataStore.query(Post, post);
   
         assert.notOk(retrieved, "no record should be found")
       });
@@ -364,7 +364,7 @@ const waitForSnapshots = ({
           p.postId("eq", post.postId).title("eq", post.title)
         );
   
-        const retrieved = await DataStore.query(Post, post.postId);
+        const retrieved = await DataStore.query(Post, post);
   
         assert.notOk(retrieved, "no record should be found")
       });
@@ -378,7 +378,7 @@ const waitForSnapshots = ({
     
         await DataStore.delete(Post, p => p.postId("eq", post.postId));
     
-        const retrieved = await DataStore.query(Post, post.postId);
+        const retrieved = await DataStore.query(Post, post);
     
         assert.notOk(retrieved, "no record should be found")
       });
@@ -392,7 +392,7 @@ const waitForSnapshots = ({
     
         await DataStore.delete(comment);
     
-        const retrieved = await DataStore.query(Comment, comment.commentId);
+        const retrieved = await DataStore.query(Comment, comment);
     
         assert.notOk(retrieved, "no record should be found")
       });
@@ -409,7 +409,7 @@ const waitForSnapshots = ({
           content: comment.content
         });
     
-        const retrieved = await DataStore.query(Comment, comment.commentId);
+        const retrieved = await DataStore.query(Comment, comment);
     
         assert.notOk(retrieved, "no record should be found")
       });
@@ -425,7 +425,7 @@ const waitForSnapshots = ({
           c => c.commentId('eq', comment.commentId).content('eq', comment.content)
         );
     
-        const retrieved = await DataStore.query(Comment, comment.commentId);
+        const retrieved = await DataStore.query(Comment, comment);
     
         assert.notOk(retrieved, "no record should be found")
       });
@@ -442,7 +442,7 @@ const waitForSnapshots = ({
           content: "does not exist"
         });
     
-        const retrieved = await DataStore.query(Comment, comment.commentId);
+        const retrieved = await DataStore.query(Comment, comment);
     
         assert.ok(retrieved, "the original record should still exist");
         assert.deepEqual(deleted, []);
@@ -465,7 +465,7 @@ const waitForSnapshots = ({
           // content: "..."
         });
     
-        const retrieved = await DataStore.query(Comment, comment.commentId);
+        const retrieved = await DataStore.query(Comment, comment);
     
         assert.ok(retrieved, "the original record should still exist");
         assert.deepEqual(deleted, []);
@@ -1049,7 +1049,7 @@ const waitForSnapshots = ({
         post
       }));
     
-      const retrieved = await DataStore.query(Comment, comment.commentId);
+      const retrieved = await DataStore.query(Comment, {...comment});
     
       assert.ok(retrieved, "retrieved comment is non nullish");
       assert.equal(retrieved.commentId, comment.commentId);
